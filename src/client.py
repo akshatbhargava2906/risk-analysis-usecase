@@ -50,7 +50,7 @@ def _headers() -> dict:
 #  Core invoke 
 
 def _invoke(deployment_id: str, body: dict, timeout: int = 120) -> dict:
-    url = f"{_BASE_URL}/v2/inference/deployments/{deployment_id}/invoke"
+    url = f"{_BASE_URL}/v2/inference/deployments/{deployment_id}"
     resp = requests.post(url, headers=_headers(), json=body, timeout=timeout)
     resp.raise_for_status()
     return resp.json()

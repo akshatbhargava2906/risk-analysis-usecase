@@ -16,3 +16,6 @@ def get_patient_files() -> dict[str, Path]:
 
 def pdf_to_base64(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode("utf-8")
+
+def bytes_to_base64(data: bytes) -> str:
+    return base64.b64encode(data).decode("utf-8")

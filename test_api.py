@@ -90,7 +90,7 @@ def test_claude(token: str):
 
 def test_embedding(token: str):
     print("\n4. EMBEDDING INVOKE")
-    url = f"{BASE_URL}/v2/inference/deployments/{EMBEDDING_ID}/invoke"
+    url = f"{BASE_URL}/v2/inference/deployments/{EMBEDDING_ID}"
     headers = {
         "Authorization":     f"Bearer {token}",
         "AI-Resource-Group":  RESOURCE_GROUP,

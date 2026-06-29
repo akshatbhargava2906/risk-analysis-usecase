@@ -46,7 +46,9 @@ def render_indicator_table(indicators: list):
 
     def color_row(row):
         bg = ROW_COLORS.get(row.get("status", ""), "")
-        return [f"background-color:{bg}" for _ in row]
+        if bg:
+            return [f"background-color:{bg};color:#1a1a1a" for _ in row]
+        return ["" for _ in row]
 
     st.dataframe(
         df.style.apply(color_row, axis=1),
@@ -59,9 +61,14 @@ def render_analysis(text: str):
     current = None
 
     for line in text.splitlines():
-        stripped = line.strip()
-        if stripped in sections:
-            current = stripped
+        clean = line.strip().upper()
+        for ch in ("#", "*", "_", ":"):
+            clean = clean.replace(ch, "")
+        clean = clean.strip()
+
+        matched = next((key for key in sections if clean == key or clean.startswith(key)), None)
+        if matched:
+            current = matched
         elif current:
             sections[current] += line + "\n"
 

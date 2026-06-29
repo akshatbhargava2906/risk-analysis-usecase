@@ -6,24 +6,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_URL       = os.getenv("AI_CORE_BASE_URL", "").rstrip("/")
-AUTH_URL       = os.getenv("AI_CORE_AUTH_URL", "").rstrip("/")
-CLIENT_ID      = os.getenv("AI_CORE_CLIENT_ID", "")
-CLIENT_SECRET  = os.getenv("AI_CORE_CLIENT_SECRET", "")
+BASE_URL = os.getenv("AI_CORE_BASE_URL", "").rstrip("/")
+AUTH_URL = os.getenv("AI_CORE_AUTH_URL", "").rstrip("/")
+CLIENT_ID = os.getenv("AI_CORE_CLIENT_ID", "")
+CLIENT_SECRET = os.getenv("AI_CORE_CLIENT_SECRET", "")
 RESOURCE_GROUP = os.getenv("AI_CORE_RESOURCE_GROUP", "default")
-DEPLOYMENT_ID  = os.getenv("AI_CORE_DEPLOYMENT_ID", "")
-EMBEDDING_ID   = os.getenv("AI_CORE_EMBEDDING_ID", "")
+DEPLOYMENT_ID = os.getenv("AI_CORE_DEPLOYMENT_ID", "")
+EMBEDDING_ID = os.getenv("AI_CORE_EMBEDDING_ID", "")
 
 
 def test_env():
     print("\n1. ENV VARIABLES")
     required = {
-        "AI_CORE_BASE_URL":       BASE_URL,
-        "AI_CORE_AUTH_URL":       AUTH_URL,
-        "AI_CORE_CLIENT_ID":      CLIENT_ID,
-        "AI_CORE_CLIENT_SECRET":  CLIENT_SECRET,
-        "AI_CORE_DEPLOYMENT_ID":  DEPLOYMENT_ID,
-        "AI_CORE_EMBEDDING_ID":   EMBEDDING_ID,
+        "AI_CORE_BASE_URL": BASE_URL,
+        "AI_CORE_AUTH_URL": AUTH_URL,
+        "AI_CORE_CLIENT_ID": CLIENT_ID,
+        "AI_CORE_CLIENT_SECRET": CLIENT_SECRET,
+        "AI_CORE_DEPLOYMENT_ID": DEPLOYMENT_ID,
+        "AI_CORE_EMBEDDING_ID": EMBEDDING_ID,
     }
     all_ok = True
     for key, val in required.items():
@@ -40,8 +40,8 @@ def test_token():
         resp = requests.post(
             f"{AUTH_URL}/oauth/token",
             data={
-                "grant_type":    "client_credentials",
-                "client_id":     CLIENT_ID,
+                "grant_type": "client_credentials",
+                "client_id": CLIENT_ID,
                 "client_secret": CLIENT_SECRET,
             },
             timeout=30,
@@ -85,16 +85,16 @@ def test_claude(token: str):
         print(f"FAIL  {e}")
         if hasattr(e, "response") and e.response is not None:
             print(f"Status: {e.response.status_code}")
-            print(f"Body:   {e.response.text[:300]}")
+            print(f"Body: {e.response.text[:300]}")
 
 
 def test_embedding(token: str):
     print("\n4. EMBEDDING INVOKE")
     url = f"{BASE_URL}/v2/inference/deployments/{EMBEDDING_ID}"
     headers = {
-        "Authorization":     f"Bearer {token}",
-        "AI-Resource-Group":  RESOURCE_GROUP,
-        "Content-Type":      "application/json",
+        "Authorization": f"Bearer {token}",
+        "AI-Resource-Group": RESOURCE_GROUP,
+        "Content-Type": "application/json",
     }
     body = {"input": "Hemoglobin level is low."}
     try:
@@ -111,7 +111,7 @@ def test_embedding(token: str):
         print(f"FAIL  {e}")
         if hasattr(e, "response") and e.response is not None:
             print(f"Status: {e.response.status_code}")
-            print(f"Body:   {e.response.text[:300]}")
+            print(f"Body: {e.response.text[:300]}")
 
 
 if __name__ == "__main__":

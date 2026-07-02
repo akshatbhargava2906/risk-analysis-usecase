@@ -3,6 +3,7 @@ import json
 import time
 import requests
 from requests.auth import HTTPBasicAuth
+from json_repair import repair_json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,7 +15,6 @@ _CLIENT_SECRET = os.getenv("AI_CORE_CLIENT_SECRET", "")
 _RESOURCE_GROUP = os.getenv("AI_CORE_RESOURCE_GROUP", "default")
 _DEPLOYMENT_ID = os.getenv("AI_CORE_DEPLOYMENT_ID", "")
 _EMBEDDING_ID = os.getenv("AI_CORE_EMBEDDING_ID", "")
-
 _AZ_ENDPOINT = os.getenv("AZURE_EMBEDDING_ENDPOINT", "").rstrip("/")
 _AZ_API_KEY = os.getenv("AZURE_EMBEDDING_API_KEY", "")
 _AZ_DEPLOYMENT = os.getenv("AZURE_EMBEDDING_DEPLOYMENT", "")
@@ -22,6 +22,8 @@ _AZ_API_VERSION = os.getenv("AZURE_EMBEDDING_API_VERSION", "2024-02-01")
 
 _token_cache: dict = {"token": None, "expires_at": 0.0}
 
+
+#  Auth 
 
 def _get_token() -> str:
     if _token_cache["token"] and time.time() < _token_cache["expires_at"] - 60:
@@ -48,6 +50,8 @@ def _headers() -> dict:
     }
 
 
+#  Core invoke ─
+
 def _invoke_claude(body: dict, timeout: int = 120) -> dict:
     url = f"{_BASE_URL}/v2/inference/deployments/{_DEPLOYMENT_ID}/invoke"
     resp = requests.post(url, headers=_headers(), json=body, verify=False, timeout=timeout)
@@ -55,12 +59,27 @@ def _invoke_claude(body: dict, timeout: int = 120) -> dict:
     return resp.json()
 
 
+def _parse_json(raw: str) -> dict:
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise ValueError(f"No JSON found. Raw start: {raw[:200]}")
+    raw = raw[start:end]
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return json.loads(repair_json(raw))
+
+
+#  Claude calls 
+
 def extract_indicators(pdf_b64: str) -> dict:
-    system = """You are a medical data extraction assistant.
-Extract ALL measurable health indicators from the lab report PDF.
-Return ONLY valid JSON — no explanation, no markdown fences.
-Keep ALL string values as short as possible. Notes must be 5 words max.
+    system = """You are a medical document extraction assistant.
+First identify the document type, then extract all measurable health indicators.
+Return ONLY valid JSON — no explanation, no markdown fences. Notes must be 5 words max:
 {
+  "doc_type": "blood|xray|ecg|unknown",
   "patient_name": "string",
   "report_date": "string",
   "indicators": [
@@ -74,6 +93,11 @@ Keep ALL string values as short as possible. Notes must be 5 words max.
     }
   ]
 }
+doc_type rules:
+- blood: CBC, metabolic panel, lipid panel, blood test
+- xray: chest X-ray, bone X-ray, radiograph
+- ecg: electrocardiogram, ECG, EKG, cardiac rhythm
+- unknown: anything else
 Status rules:
 - normal: value within reference range
 - abnormal: value outside reference range
@@ -95,53 +119,56 @@ Status rules:
                             "data": pdf_b64,
                         },
                     },
-                    {"type": "text", "text": "Extract all health indicators and return the JSON."},
+                    {"type": "text", "text": "Identify the document type and extract all health indicators. Return the JSON."},
                 ],
             }
         ],
     }
 
-    import json
-    from json_repair import repair_json
-
-    raw = _invoke_claude(body)["content"][0]["text"].strip()
-    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-
-    start = raw.find("{")
-    end = raw.rfind("}") + 1
-    if start == -1 or end == 0:
-        raise ValueError(f"No JSON object found. Raw start: {raw[:200]}")
-    raw = raw[start:end]
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return json.loads(repair_json(raw))
+    raw = _invoke_claude(body)["content"][0]["text"]
+    return _parse_json(raw)
 
 
-def generate_analysis(risk_score: int, risk_tier: str, flagged: list) -> str:
+def generate_analysis(risk_score: int, risk_tier: str, flagged: list, questionnaire: dict = None) -> str:
     lines = "\n".join(
-        f"- {i['name']}: {i['value']} {i['unit']} "
+        f"- [{i.get('doc_type', 'unknown').upper()}] {i['name']}: {i['value']} {i['unit']} "
         f"(ref: {i['reference_range']}) — {i.get('note', '')}"
         for i in flagged
     )
+
+    q_context = ""
+    if questionnaire:
+        smoking = questionnaire.get("smoking", {})
+        history = questionnaire.get("family_history", [])
+        claims = questionnaire.get("insurance", {}).get("previous_claims", "")
+        q_context = (
+            f"\nPatient Background:"
+            f"\n- Smoking: {smoking.get('status', 'unknown')} ({smoking.get('pack_years', 'N/A')} pack-years)"
+            f"\n- Family history: {', '.join(history) if history else 'None reported'}"
+            f"\n- Previous claims: {claims if claims else 'None'}"
+        )
+
     body = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 1024,
-        "system": "You are a clinical risk analyst. Write plain-English summaries for non-specialist readers.",
+        "system": "You are a clinical risk analyst for an insurance underwriter. Write plain-English summaries. Never give a yes/no claim decision — only observations and suggestions.",
         "messages": [
             {
                 "role": "user",
                 "content": (
-                    f"Risk Score: {risk_score}/100\nRisk Tier: {risk_tier}\n\n"
+                    f"Risk Score: {risk_score}/100\nRisk Tier: {risk_tier}"
+                    f"{q_context}\n\n"
                     f"Flagged Indicators:\n{lines}\n\n"
                     "Return exactly three sections:\nSUMMARY\nFLAGGED INDICATORS\nRECOMMENDATIONS"
                 ),
             }
         ],
     }
+
     return _invoke_claude(body, timeout=60)["content"][0]["text"]
 
+
+#  Embedding
 
 def get_embedding(text: str) -> list[float]:
     url = (
